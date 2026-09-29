@@ -77,3 +77,7 @@ yarn build
 
 The package manager is Yarn 4 (`.yarnrc.yml`, `yarn.lock`). `sharp` is pinned to the
 version Next.js itself depends on; Next keeps it out of the server bundle automatically.
+
+## License
+
+[MIT](LICENSE)
