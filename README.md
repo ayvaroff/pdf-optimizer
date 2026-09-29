@@ -62,14 +62,14 @@ lib/
     pipeline.ts            sharp pipeline built from OptimizeParams
 scripts/
   copy-pdfjs-assets.mjs    Copies the pdf.js worker, wasm decoders, fonts and CMaps
-                           into public/pdfjs before dev/build (gitignored output)
+                           into public/pdfjs; chained into dev and build (gitignored output)
 ```
 
 ## Development
 
 ```bash
 yarn install
-yarn dev        # copies pdf.js assets, then starts Next on http://localhost:3000
+yarn dev        # copies pdf.js assets (yarn pdfjs-assets), then starts Next on http://localhost:3000
 yarn typecheck
 yarn lint
 yarn build

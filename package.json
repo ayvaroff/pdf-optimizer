@@ -4,10 +4,9 @@
   "private": true,
   "license": "MIT",
   "scripts": {
-    "predev": "node scripts/copy-pdfjs-assets.mjs",
-    "dev": "next dev",
-    "prebuild": "node scripts/copy-pdfjs-assets.mjs",
-    "build": "next build",
+    "pdfjs-assets": "node scripts/copy-pdfjs-assets.mjs",
+    "dev": "yarn pdfjs-assets && next dev",
+    "build": "yarn pdfjs-assets && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit"
