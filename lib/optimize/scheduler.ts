@@ -35,7 +35,8 @@ export class OptimizeQueue {
     if (this.disposed) return;
     const wanted = new Set<number>();
     for (const page of pages) {
-      if (!page.source) continue;
+      // Excluded pages are not optimized; any in-flight request for them is aborted below.
+      if (!page.source || !page.included) continue;
       const params = mergeParams(global, page.override);
       const key = paramsKey(params);
       wanted.add(page.index);

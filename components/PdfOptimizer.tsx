@@ -29,6 +29,10 @@ type Action =
   | { type: "queue"; update: QueueUpdate }
   | { type: "set-global"; params: OptimizeParams }
   | { type: "set-override"; index: number; override: OptimizeParams | null }
+  | { type: "set-included"; index: number; included: boolean }
+  | { type: "set-all-included"; included: boolean }
+  /** Moves the page with id `index` so that it occupies array position `toPosition`. */
+  | { type: "move-page"; index: number; toPosition: number }
   | { type: "building"; value: { done: number; total: number } | null }
   | { type: "reset" };
 
@@ -49,6 +53,7 @@ function reducer(state: State, action: Action): State {
         index,
         widthPt: 0,
         heightPt: 0,
+        included: true,
         override: null,
         status: "loading",
       }));
@@ -73,7 +78,7 @@ function reducer(state: State, action: Action): State {
       return updatePage(state, action.index, { sourceError: action.error, status: "error", error: action.error });
     case "queue": {
       const u = action.update;
-      const page = state.doc?.pages[u.index];
+      const page = state.doc?.pages.find((p) => p.index === u.index);
       if (!page?.source) return state;
       switch (u.type) {
         case "queued":
@@ -91,6 +96,23 @@ function reducer(state: State, action: Action): State {
       return { ...state, global: action.params };
     case "set-override":
       return updatePage(state, action.index, { override: action.override });
+    case "set-included":
+      return updatePage(state, action.index, { included: action.included });
+    case "set-all-included": {
+      if (!state.doc) return state;
+      const pages = state.doc.pages.map((p) => ({ ...p, included: action.included }));
+      return { ...state, doc: { ...state.doc, pages } };
+    }
+    case "move-page": {
+      if (!state.doc) return state;
+      const from = state.doc.pages.findIndex((p) => p.index === action.index);
+      if (from === -1) return state;
+      const pages = [...state.doc.pages];
+      const [moved] = pages.splice(from, 1);
+      const to = Math.max(0, Math.min(pages.length, action.toPosition));
+      pages.splice(to, 0, moved);
+      return { ...state, doc: { ...state.doc, pages } };
+    }
     case "building":
       return { ...state, building: action.value };
     case "reset":
@@ -105,6 +127,8 @@ const CONCURRENT_UPLOADS = 3;
 export function PdfOptimizer() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [compareIndex, setCompareIndex] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
   const queueRef = useRef<OptimizeQueue | null>(null);
   const loadToken = useRef(0);
   const objectUrls = useRef<string[]>([]);
@@ -176,10 +200,13 @@ export function PdfOptimizer() {
   const handleDownload = useCallback(async () => {
     const doc = state.doc;
     if (!doc) return;
-    const items = doc.pages.map((p) => {
-      if (!p.result) throw new Error(`Page ${p.index + 1} is not ready`);
-      return { widthPt: p.widthPt, heightPt: p.heightPt, blob: p.result.blob, mime: p.result.mime };
-    });
+    const items = doc.pages
+      .filter((p) => p.included)
+      .map((p) => {
+        if (!p.result) throw new Error(`Page ${p.index + 1} is not ready`);
+        return { widthPt: p.widthPt, heightPt: p.heightPt, blob: p.result.blob, mime: p.result.mime };
+      });
+    if (items.length === 0) return;
     dispatch({ type: "building", value: { done: 0, total: items.length } });
     try {
       const blob = await assemblePdf(items, (done, total) => dispatch({ type: "building", value: { done, total } }));
@@ -197,11 +224,26 @@ export function PdfOptimizer() {
   }, [state.doc]);
 
   const doc = state.doc;
-  const readyPages = doc
-    ? doc.pages.filter((p) => p.result && p.result.paramsKey === paramsKey(mergeParams(state.global, p.override))).length
-    : 0;
-  const optimizedTotal = doc ? doc.pages.reduce((sum, p) => sum + (p.result?.blob.size ?? 0), 0) : 0;
-  const comparePage = compareIndex !== null ? doc?.pages[compareIndex] : undefined;
+  const includedPages = doc ? doc.pages.filter((p) => p.included) : [];
+  const readyPages = includedPages.filter(
+    (p) => p.result && p.result.paramsKey === paramsKey(mergeParams(state.global, p.override)),
+  ).length;
+  const optimizedTotal = includedPages.reduce((sum, p) => sum + (p.result?.blob.size ?? 0), 0);
+  const comparePage = compareIndex !== null ? doc?.pages.find((p) => p.index === compareIndex) : undefined;
+
+  /** Drops the dragged page onto the card with id `targetIndex`, taking its position. */
+  const handleDrop = useCallback(
+    (targetIndex: number) => {
+      if (dragIndex === null || !state.doc) return;
+      const toPosition = state.doc.pages.findIndex((p) => p.index === targetIndex);
+      if (toPosition !== -1 && dragIndex !== targetIndex) {
+        dispatch({ type: "move-page", index: dragIndex, toPosition });
+      }
+      setDragIndex(null);
+      setDropTarget(null);
+    },
+    [dragIndex, state.doc],
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -219,7 +261,9 @@ export function PdfOptimizer() {
             fileName={doc.fileName}
             fileSize={doc.fileSize}
             pageCount={doc.pageCount}
+            includedCount={includedPages.length}
             readyPages={readyPages}
+            onSetAllIncluded={(included) => dispatch({ type: "set-all-included", included })}
             optimizedTotal={optimizedTotal}
             building={state.building}
             onDownload={handleDownload}
@@ -234,14 +278,28 @@ export function PdfOptimizer() {
             </p>
           </section>
 
+          <p className="-mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+            Drag a thumbnail onto another page to reorder. Untick a page to leave it out of the PDF.
+          </p>
           <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {doc.pages.map((page) => (
+            {doc.pages.map((page, position) => (
               <PageCard
                 key={page.index}
                 page={page}
+                position={position}
                 global={state.global}
+                dragging={dragIndex === page.index}
+                dropTarget={dropTarget === page.index && dragIndex !== page.index}
                 onOverride={(index, override) => dispatch({ type: "set-override", index, override })}
+                onIncluded={(index, included) => dispatch({ type: "set-included", index, included })}
                 onCompare={setCompareIndex}
+                onDragStart={setDragIndex}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDropTarget(null);
+                }}
+                onDragEnter={setDropTarget}
+                onDrop={handleDrop}
               />
             ))}
           </ul>

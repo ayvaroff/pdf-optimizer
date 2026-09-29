@@ -4,7 +4,9 @@ A single-page web app for shrinking scanned PDFs by hand: open a PDF, see every 
 choose compression settings globally or per page, watch the resulting size, and download a
 rebuilt PDF. Built with Next.js (App Router), React, TypeScript and Tailwind.
 
-It replaces the manual `pdfimages` → image optimizer → jsPDF workflow with one UI.
+It replaces the manual `pdfimages` → image optimizer → jsPDF workflow with one UI. Pages can
+be left out of the output (checkbox on each card) and reordered by dragging a thumbnail onto
+another page.
 
 ## How it works
 

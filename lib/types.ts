@@ -51,8 +51,13 @@ export interface OptimizeResult {
 export type PageStatus = "loading" | "ready" | "queued" | "optimizing" | "done" | "error";
 
 export interface PageState {
-  /** Zero-based page index. */
+  /**
+   * Zero-based index of the page in the original document. Stable identity:
+   * pages may be reordered, so never use array position to identify a page.
+   */
   index: number;
+  /** Whether the page goes into the rebuilt PDF. */
+  included: boolean;
   /** Output page size in PDF points, after applying the page's /Rotate. */
   widthPt: number;
   heightPt: number;
